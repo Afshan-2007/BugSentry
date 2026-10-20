@@ -12,12 +12,24 @@ import {
 } from '@/lib/ui';
 import DashboardShell, { type NavItem } from '@/components/DashboardShell';
 import BugDetail from '@/components/BugDetail';
+import SeekHelpAI from '@/components/SeekHelpAI';
 import { useAuth } from '@/context/AuthContext';
-import { LayoutDashboard, FileText, Bell } from 'lucide-react';
+import {
+  LayoutDashboard,
+  FileText,
+  Bell,
+  Bot,
+  Bug as BugIcon,
+  AlertCircle,
+  Clock,
+  CheckCircle2,
+  ArrowRight,
+} from 'lucide-react';
 
 const NAV: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, view: 'dashboard' },
   { label: 'Assigned Bugs', icon: FileText, view: 'bugs' },
+  { label: 'Seek Help from AI', icon: Bot, view: 'ai-help' },
   { label: 'Notifications', icon: Bell, view: 'notifications' },
 ];
 
@@ -28,24 +40,35 @@ export default function DeveloperDashboard() {
   const [selectedBug, setSelectedBug] = useState<Bug | null>(null);
   const [reporterMap, setReporterMap] = useState<Record<string, Profile>>({});
   const [notifications, setNotifications] = useState<
-    { id: string; message: string; is_read: boolean; created_at: string; bug_id: string | null }[]
+    {
+      id: string;
+      message: string;
+      is_read: boolean;
+      created_at: string;
+      bug_id: string | null;
+    }[]
   >([]);
 
   async function loadBugs() {
     if (!profile) return;
+
     const { data } = await supabase
       .from('bugs')
       .select('*')
       .eq('assignee_id', profile.id)
       .order('created_at', { ascending: false });
+
     const list = (data as Bug[]) ?? [];
     setBugs(list);
+
     const ids = Array.from(new Set(list.map((b) => b.reporter_id)));
+
     if (ids.length > 0) {
       const { data: profs } = await supabase
         .from('profiles')
         .select('*')
         .in('id', ids);
+
       const map: Record<string, Profile> = {};
       (profs as Profile[])?.forEach((p) => (map[p.id] = p));
       setReporterMap(map);
@@ -54,11 +77,13 @@ export default function DeveloperDashboard() {
 
   async function loadNotifications() {
     if (!profile) return;
+
     const { data } = await supabase
       .from('notifications')
       .select('*')
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false });
+
     setNotifications((data as typeof notifications) ?? []);
   }
 
@@ -69,15 +94,23 @@ export default function DeveloperDashboard() {
 
   useEffect(() => {
     if (!profile) return;
+
     const profileId = profile.id;
+
     const ch = supabase
       .channel('dev-notifs')
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${profileId}` },
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${profileId}`,
+        },
         () => loadNotifications()
       )
       .subscribe();
+
     return () => {
       supabase.removeChannel(ch);
     };
@@ -89,6 +122,12 @@ export default function DeveloperDashboard() {
     inProgress: bugs.filter((b) => b.status === 'in_progress').length,
     resolved: bugs.filter((b) => b.status === 'resolved').length,
   };
+
+  const workQueue = bugs
+    .filter((b) => b.status !== 'resolved')
+    .slice(0, 5);
+
+  const recentBugs = bugs.slice(0, 5);
 
   if (selectedBug) {
     return (
@@ -126,39 +165,136 @@ export default function DeveloperDashboard() {
     >
       {view === 'dashboard' && (
         <div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">
-            Welcome, {profile?.full_name || 'Developer'}
-          </h1>
-          <p className="text-slate-500 text-sm mb-6">
-            Bugs assigned to you and their AI predictions.
-          </p>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-            <StatCard label="Assigned" value={stats.total} color="slate" />
-            <StatCard label="Open" value={stats.open} color="blue" />
-            <StatCard label="In Progress" value={stats.inProgress} color="amber" />
-            <StatCard label="Resolved" value={stats.resolved} color="emerald" />
+          {/* Header */}
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-slate-900 mb-1">
+              Welcome, {profile?.full_name || 'Developer'} 👋
+            </h1>
+
+            <p className="text-slate-500 text-sm">
+              Here's an overview of your assigned bugs and current work.
+            </p>
           </div>
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-            <div className="px-5 py-4 border-b border-slate-100">
-              <h2 className="font-semibold text-slate-900">Assigned Bugs</h2>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+            <StatCard
+              label="Assigned"
+              value={stats.total}
+              color="slate"
+              icon={BugIcon}
+            />
+
+            <StatCard
+              label="Open"
+              value={stats.open}
+              color="blue"
+              icon={AlertCircle}
+            />
+
+            <StatCard
+              label="In Progress"
+              value={stats.inProgress}
+              color="amber"
+              icon={Clock}
+            />
+
+            <StatCard
+              label="Resolved"
+              value={stats.resolved}
+              color="emerald"
+              icon={CheckCircle2}
+            />
+          </div>
+
+          {/* Work Queue */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm mb-6">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-slate-900">
+                  Work Queue
+                </h2>
+
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Bugs that still require your attention
+                </p>
+              </div>
+
+              <span className="text-xs font-medium text-slate-500">
+                {workQueue.length} pending
+              </span>
             </div>
-            <BugList bugs={bugs} reporterMap={reporterMap} onSelect={(b) => setSelectedBug(b)} />
+
+            {workQueue.length === 0 ? (
+              <div className="px-5 py-12 text-center">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+
+                <p className="text-sm font-medium text-slate-700">
+                  All caught up!
+                </p>
+
+                <p className="text-xs text-slate-400 mt-1">
+                  You have no unresolved bugs requiring attention.
+                </p>
+              </div>
+            ) : (
+              <BugList
+                bugs={workQueue}
+                reporterMap={reporterMap}
+                onSelect={(b) => setSelectedBug(b)}
+              />
+            )}
+          </div>
+
+          {/* Recent Assigned Bugs */}
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 className="font-semibold text-slate-900">
+                Recent Assigned Bugs
+              </h2>
+
+              <button
+                onClick={() => setView('bugs')}
+                className="text-sm text-sky-600 hover:text-sky-700 font-medium flex items-center gap-1"
+              >
+                View all
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+
+            <BugList
+              bugs={recentBugs}
+              reporterMap={reporterMap}
+              onSelect={(b) => setSelectedBug(b)}
+            />
           </div>
         </div>
       )}
 
       {view === 'bugs' && (
         <div>
-          <h1 className="text-xl font-bold text-slate-900 mb-4">My Assigned Bugs</h1>
+          <h1 className="text-xl font-bold text-slate-900 mb-4">
+            My Assigned Bugs
+          </h1>
+
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
-            <BugList bugs={bugs} reporterMap={reporterMap} onSelect={(b) => setSelectedBug(b)} />
+            <BugList
+              bugs={bugs}
+              reporterMap={reporterMap}
+              onSelect={(b) => setSelectedBug(b)}
+            />
           </div>
         </div>
       )}
 
+      {view === 'ai-help' && <SeekHelpAI />}
+
       {view === 'notifications' && (
         <div>
-          <h1 className="text-xl font-bold text-slate-900 mb-4">Notifications</h1>
+          <h1 className="text-xl font-bold text-slate-900 mb-4">
+            Notifications
+          </h1>
+
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm divide-y divide-slate-50">
             {notifications.length === 0 ? (
               <div className="px-5 py-12 text-center text-sm text-slate-400">
@@ -168,9 +304,14 @@ export default function DeveloperDashboard() {
               notifications.map((n) => (
                 <div
                   key={n.id}
-                  className={`px-5 py-4 ${n.is_read ? 'text-slate-500' : 'text-slate-800 font-medium'}`}
+                  className={`px-5 py-4 ${
+                    n.is_read
+                      ? 'text-slate-500'
+                      : 'text-slate-800 font-medium'
+                  }`}
                 >
                   {n.message}
+
                   <div className="text-xs text-slate-400 mt-1">
                     {formatDate(n.created_at)}
                   </div>
@@ -184,18 +325,39 @@ export default function DeveloperDashboard() {
   );
 }
 
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+function StatCard({
+  label,
+  value,
+  color,
+  icon: Icon,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  icon: React.ElementType;
+}) {
   const colors: Record<string, string> = {
     slate: 'from-slate-500 to-slate-600',
     blue: 'from-blue-500 to-sky-500',
     amber: 'from-amber-500 to-orange-500',
     emerald: 'from-emerald-500 to-teal-500',
   };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors[color]} mb-3`} />
-      <div className="text-2xl font-bold text-slate-900">{value}</div>
-      <div className="text-sm text-slate-500">{label}</div>
+      <div
+        className={`w-10 h-10 rounded-xl bg-gradient-to-br ${colors[color]} mb-3 flex items-center justify-center`}
+      >
+        <Icon className="w-5 h-5 text-white" />
+      </div>
+
+      <div className="text-2xl font-bold text-slate-900">
+        {value}
+      </div>
+
+      <div className="text-sm text-slate-500">
+        {label}
+      </div>
     </div>
   );
 }
@@ -216,6 +378,7 @@ function BugList({
       </div>
     );
   }
+
   return (
     <div className="divide-y divide-slate-50">
       {bugs.map((b) => (
@@ -225,19 +388,33 @@ function BugList({
           className="w-full text-left px-5 py-4 hover:bg-slate-50 transition flex flex-wrap items-center justify-between gap-3"
         >
           <div className="min-w-0 flex-1">
-            <div className="font-medium text-slate-900 truncate">{b.title}</div>
+            <div className="font-medium text-slate-900 truncate">
+              {b.title}
+            </div>
+
             <div className="text-xs text-slate-500 mt-0.5">
-              {categoryLabel[b.category]} · Reported by {reporterMap[b.reporter_id]?.full_name || 'Unknown'} · {formatDate(b.created_at)}
+              {categoryLabel[b.category]} · Reported by{' '}
+              {reporterMap[b.reporter_id]?.full_name || 'Unknown'} ·{' '}
+              {formatDate(b.created_at)}
             </div>
           </div>
+
           <div className="flex items-center gap-2">
-            <span className={`px-2 py-0.5 rounded-md text-xs border ${severityStyles[b.severity]}`}>
+            <span
+              className={`px-2 py-0.5 rounded-md text-xs border ${severityStyles[b.severity]}`}
+            >
               {severityLabel[b.severity]}
             </span>
-            <span className={`px-2 py-0.5 rounded-md text-xs border ${priorityStyles[b.priority]}`}>
+
+            <span
+              className={`px-2 py-0.5 rounded-md text-xs border ${priorityStyles[b.priority]}`}
+            >
               {priorityLabel[b.priority]}
             </span>
-            <span className={`px-2.5 py-0.5 rounded-md text-xs border ${statusStyles[b.status]}`}>
+
+            <span
+              className={`px-2.5 py-0.5 rounded-md text-xs border ${statusStyles[b.status]}`}
+            >
               {statusLabel[b.status]}
             </span>
           </div>

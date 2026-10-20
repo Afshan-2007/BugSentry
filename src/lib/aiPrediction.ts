@@ -9,96 +9,165 @@ export type PredictionInput = {
 };
 
 export type PredictionResult = {
-  predicted_category: string;
+  predicted_category: BugCategory;
   probable_root_cause: string;
   confidence_score: number;
   model_version: string;
 };
 
-/**
- * Deterministic AI prediction module.
- *
- * Generates a pseudo-AI prediction for a bug based on its metadata using a
- * deterministic hashing approach. This is intentionally modular so a real
- * ML model can be swapped in later by replacing the body of `predict()`
- * while keeping the same input/output contract.
- */
+const OLLAMA_URL = 'http://localhost:11434/api/chat';
+const OLLAMA_MODEL = 'llama3.2:latest';
 
-const ROOT_CAUSES: Record<BugCategory, string[]> = {
-  ui: [
-    'Incorrect CSS state handling causing layout mismatch or unresponsive interaction handlers.',
-    'Component re-rendering with stale props leading to inconsistent visual state.',
-    'Missing or incorrect event listener cleanup on component unmount.',
-  ],
-  backend: [
-    'Unhandled exception in service layer due to null or malformed input payload.',
-    'Race condition between concurrent requests mutating shared state without locking.',
-    'Incorrect business logic branch caused by an off-by-one or inverted condition.',
-  ],
-  database: [
-    'Missing index on a frequently-joined column causing slow query and lock contention.',
-    'Foreign key constraint violation from out-of-order record insertion.',
-    'Transaction rollback not triggered due to uncaught nested query failure.',
-  ],
-  network: [
-    'Intermittent timeout from upstream service exceeding retry budget.',
-    'Incorrect TLS or CORS configuration rejecting legitimate cross-origin requests.',
-    'DNS resolution failure or stale connection pool under load.',
-  ],
-  security: [
-    'Insufficient input validation allowing injection of unauthorized characters.',
-    'Broken access control check allowing access to resources outside user scope.',
-    'Session token not invalidated after role change, leaving stale permissions.',
-  ],
-  performance: [
-    'N+1 query pattern triggered by unbatched loop over related records.',
-    'Large payload serialized synchronously blocking the main render thread.',
-    'Missing memoization causing recomputation of expensive derived values.',
-  ],
-  api: [
-    'Contract mismatch between client payload shape and server schema validation.',
-    'Missing error envelope on non-2xx response causing silent client failure.',
-    'Incorrect HTTP method or content-type header on an integration endpoint.',
-  ],
-  other: [
-    'Unclassified defect requiring manual triage to isolate the root cause.',
-    'Environmental or configuration drift between staging and production.',
-    'Edge case in input handling not covered by existing test coverage.',
-  ],
+const VALID_CATEGORIES: BugCategory[] = [
+  'ui',
+  'backend',
+  'database',
+  'network',
+  'security',
+  'performance',
+  'api',
+  'other',
+];
+
+type OllamaResponse = {
+  message?: {
+    content?: string;
+  };
 };
 
-function hashString(str: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
+export async function predict(
+  input: PredictionInput
+): Promise<PredictionResult> {
+  const prompt = `
+You are an AI software bug classification system.
+
+Analyze the bug independently and determine its most likely technical category.
+
+BUG TITLE:
+${input.title}
+
+BUG DESCRIPTION:
+${input.description}
+
+REPORTER'S SELECTED CATEGORY:
+${input.category}
+
+SEVERITY:
+${input.severity}
+
+PRIORITY:
+${input.priority}
+
+AVAILABLE CATEGORIES:
+ui
+backend
+database
+network
+security
+performance
+api
+other
+
+IMPORTANT RULES:
+
+1. Do NOT automatically use the reporter's selected category.
+2. Analyze the title and description and choose the category that best matches the actual technical problem.
+3. The confidence score must represent how strongly the evidence supports your predicted category.
+4. Confidence must be a number between 0 and 100.
+5. Do not claim the root cause is confirmed.
+6. Give a short, technically relevant probable root cause.
+7. Return ONLY valid JSON.
+
+Return exactly:
+
+{
+  "predicted_category": "database",
+  "probable_root_cause": "The likely cause is...",
+  "confidence_score": 94
 }
+`;
 
-export function predict(input: PredictionInput): PredictionResult {
-  const seed = hashString(
-    `${input.title}|${input.description}|${input.category}`
-  );
-  const causes = ROOT_CAUSES[input.category] ?? ROOT_CAUSES.other;
-  const rootCause = causes[seed % causes.length];
+  try {
+    const response = await fetch(OLLAMA_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: OLLAMA_MODEL,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a careful software bug classification AI. Return only valid JSON.',
+          },
+          {
+            role: 'user',
+            content: prompt,
+          },
+        ],
+        stream: false,
+        format: 'json',
+        options: {
+          temperature: 0.1,
+        },
+      }),
+    });
 
-  // Confidence: base by severity, modulated by description length and seed.
-  const severityBoost: Record<string, number> = {
-    low: 6,
-    medium: 10,
-    high: 16,
-    critical: 22,
-  };
-  const base = 58 + (severityBoost[input.severity] ?? 10);
-  const lengthFactor = Math.min(input.description.length / 12, 14);
-  const jitter = (seed % 13) - 6;
-  const confidence = Math.max(45, Math.min(96, base + lengthFactor + jitter));
+    if (!response.ok) {
+      throw new Error(
+        `Ollama request failed with status ${response.status}`
+      );
+    }
 
-  return {
-    predicted_category: input.category,
-    probable_root_cause: rootCause,
-    confidence_score: Math.round(confidence * 100) / 100,
-    model_version: 'deterministic-v1',
-  };
+    const data = (await response.json()) as OllamaResponse;
+    const content = data.message?.content;
+
+    if (!content) {
+      throw new Error('Ollama returned an empty prediction.');
+    }
+
+    const parsed = JSON.parse(content) as {
+      predicted_category?: string;
+      probable_root_cause?: string;
+      confidence_score?: number;
+    };
+
+    const predictedCategory = VALID_CATEGORIES.includes(
+      parsed.predicted_category as BugCategory
+    )
+      ? (parsed.predicted_category as BugCategory)
+      : 'other';
+
+    const rawConfidence = Number(parsed.confidence_score);
+
+    const confidence = Number.isFinite(rawConfidence)
+      ? Math.min(100, Math.max(0, rawConfidence))
+      : 50;
+
+    return {
+      predicted_category: predictedCategory,
+      probable_root_cause:
+        parsed.probable_root_cause ||
+        'The AI could not determine a specific probable root cause.',
+      confidence_score: Math.round(confidence * 100) / 100,
+      model_version: 'ollama-llama3.2',
+    };
+  } catch (error) {
+    console.error('Ollama prediction failed:', error);
+
+    /*
+     * Safe fallback:
+     * If Ollama is unavailable, bug reporting still works.
+     * We clearly mark the prediction as unavailable rather
+     * than pretending the fallback is an AI prediction.
+     */
+    return {
+      predicted_category: input.category,
+      probable_root_cause:
+        'AI prediction was unavailable. Manual investigation is required.',
+      confidence_score: 0,
+      model_version: 'ollama-llama3.2-unavailable',
+    };
+  }
 }
