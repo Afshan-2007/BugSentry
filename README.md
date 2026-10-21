@@ -1,179 +1,210 @@
-# 🐞 BugSense AI — AI-Powered Bug Detection & Incident Management
+# BugSense AI — AI-Powered Bug Detection and Incident Management
 
-BugSense AI is an intelligent bug tracking and incident management system designed to streamline the software debugging lifecycle. It combines AI-assisted debugging with structured investigation, fix management, testing, and verification workflows to help development teams resolve software defects more efficiently.
+An AI-assisted bug tracking and incident management system designed to help software teams report, investigate, track, and resolve bugs through a structured workflow.
 
-## ✨ Features
+BugSense AI combines role-based dashboards, centralized bug management, attachment support, and locally hosted LLM-based analysis to support the software debugging lifecycle.
 
-### 👥 Role-Based Dashboards
-- **Reporter:** Submit bug reports, attach screenshots, track progress, and confirm or reopen fixes.
-- **Developer:** Investigate assigned bugs, document root causes, propose fixes, and record testing and verification results.
-- **Administrator:** Manage users and bugs, monitor SLA deadlines, and review audit logs and notifications.
+## Features
 
-### 🤖 AI-Assisted Debugging
-- AI-assisted bug analysis and debugging suggestions.
-- Root-cause reasoning and proposed code corrections.
-- Confidence information and investigation support.
-- Local LLM integration using Ollama and Llama 3.2.
+### Role-Based Access
 
-### 🔄 Bug Lifecycle Management
-Track incidents through a structured workflow:
+- **Reporter:** Submit bug reports, attach supporting files, and track bug status.
+- **Developer:** View and investigate assigned bugs and support the debugging workflow.
+- **Administrator:** Manage users and bugs according to the application's implemented permissions.
 
-`Report → Analyze → Assign → Reproduce → Investigate → Fix → Test → Verify → Resolve`
+### Bug Reporting and Lifecycle Management
 
-### 🧪 Testing & Verification
-- Record regression, unit, integration, and manual test results.
-- Track fix verification outcomes.
-- Support a structured investigation and resolution process.
+- Create bug reports with titles and detailed descriptions.
+- Select severity, priority, and bug category.
+- Attach screenshots, logs, and other supporting files.
+- Track bugs across statuses such as Open, In Progress, and Resolved.
+- View bug summaries and recent reports through the dashboard.
 
-### 🔐 Authentication & Data Management
-- User authentication with Supabase.
-- PostgreSQL-backed application data.
-- File and screenshot attachments using Supabase Storage.
-- Role-based access controls and row-level security policies.
+### AI-Assisted Bug Analysis
 
-### ⏱️ SLA & Audit Tracking
-- Monitor bug-resolution deadlines based on severity.
-- Maintain activity history and audit information.
-- Support notifications for bug updates and workflow events.
+- Integrates with **Ollama** to run the Llama 3.2 model locally.
+- Uses bug details to generate a predicted category, probable root cause, and confidence score.
+- Validates the returned category and confidence value.
+- Provides a fallback response when AI prediction is unavailable.
 
-## 🛠️ Tech Stack
+> BugSense AI uses a pretrained language model for inference; it does not train a custom bug-classification model.
 
-| Category | Technologies |
+### Authentication and Data Management
+
+- Supabase authentication.
+- PostgreSQL database for application data.
+- Row-Level Security (RLS) policies defined in database migrations.
+- Supabase Storage integration for bug attachments.
+
+### Testing and Verification
+
+- Selenium-based browser checks for application loading, page content, login form behavior, and related UI conditions.
+- Manual testing of selected Reporter, Developer, and Administrator workflows.
+- Responsive-layout checks at selected viewport widths.
+
+Testing results reflect the checks actually executed; not every possible workflow or testing method has been completed.
+
+## Tech Stack
+
+| Area | Technologies |
 |---|---|
 | Frontend | React, TypeScript, Vite |
-| Backend & Database | Supabase, PostgreSQL |
+| Backend services | Supabase |
+| Database | PostgreSQL |
 | Authentication | Supabase Auth |
-| File Storage | Supabase Storage |
-| AI Integration | Ollama, Llama 3.2 |
-| Browser Testing | Playwright |
-| Version Control | Git, GitHub |
+| File storage | Supabase Storage |
+| AI integration | Ollama, Llama 3.2 |
+| Browser testing | Selenium, Python |
+| Development tools | VS Code, Git, GitHub |
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
-```text
-Reporter / Developer / Administrator
-                  |
-                  v
-         React + TypeScript UI
-                  |
-        +---------+---------+
-        |                   |
-        v                   v
-      Supabase          Local Ollama
-        |                   |
-   +----+----+              v
-   |    |    |         AI Analysis
-   v    v    v
- Auth  DB  Storage
-        |
-        v
- Bug Workflow, Investigation,
- Testing, Verification & Audit
-```
+1. Users interact with the React frontend.
+2. Supabase provides authentication and application data services.
+3. PostgreSQL stores bug-management data.
+4. Supabase Storage supports file attachments.
+5. The AI integration sends bug details to the locally running Ollama API.
+6. The Llama 3.2 model generates a structured analysis response for the application to process.
 
-## 🚀 Getting Started
+**Local AI endpoint:** `http://localhost:11434/api/chat`
+
+The Ollama service must be running on the machine where the AI integration is expected to execute. This local endpoint is intended for development and is not a public production endpoint.
+
+## Getting Started
 
 ### Prerequisites
 
-Install the following before running the project:
+- Node.js and npm
+- Git
+- A Supabase project
+- Ollama
+- The Llama 3.2 model
+- Python and Selenium if you want to run the browser checks
 
-- [Node.js](https://nodejs.org/)
-- npm
-- A configured Supabase project
-- [Ollama](https://ollama.com/) for local AI functionality
-
-### 1. Clone the repository
+### 1. Clone the Repository
 
 ```bash
 git clone https://github.com/Afshan-2007/BugSentry.git
 cd BugSentry
 ```
 
-### 2. Install dependencies
+### 2. Install Dependencies
 
 ```bash
 npm install
 ```
 
-### 3. Configure environment variables
+### 3. Configure Environment Variables
 
-Create a `.env` file in the project root and add the Supabase configuration required by the application.
+Create a `.env` file in the project root using the variable names expected by the application.
 
-For a Vite application, these variables commonly use the `VITE_` prefix. Check the project's source code for the exact variable names.
+```env
+VITE_SUPABASE_URL=your_supabase_project_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+```
 
-**Never commit real secrets, private API keys, or service-role keys to GitHub.**
+Use your own Supabase project values. Never commit service-role keys, passwords, access tokens, or other secrets to GitHub.
 
-### 4. Configure Ollama
+### 4. Configure Supabase
 
-Install Ollama and pull the model used by the application:
+- Set up the required database tables and policies.
+- Configure Supabase Authentication.
+- Configure the Storage bucket required for attachments.
+- Apply the project's database migrations where appropriate.
+
+Review the migration files under `supabase/migrations/` before applying them to an existing database.
+
+### 5. Install and Start Ollama
+
+Install Ollama from [ollama.com](https://ollama.com/), then download the model:
 
 ```bash
 ollama pull llama3.2
 ```
 
-Start Ollama and ensure its local API is available. The application must be configured to use the appropriate local endpoint.
+Confirm that the model is available:
 
-### 5. Start the development server
+```bash
+ollama list
+```
+
+Test local inference:
+
+```bash
+ollama run llama3.2
+```
+
+The application expects the local Ollama chat API at `http://localhost:11434/api/chat`. Confirm that the configured model name and endpoint match your implementation.
+
+### 6. Start the Development Server
 
 ```bash
 npm run dev
 ```
 
-Open the local URL printed by Vite, usually:
+Open the local URL printed by Vite, typically:
 
-`http://localhost:5173`
-
-## 🧪 Running Browser Tests
-
-If Playwright is configured in the project, install its browser dependencies:
-
-```bash
-npx playwright install
+```text
+http://localhost:5173
 ```
 
-Run the available tests:
+## Testing
 
-```bash
-npx playwright test
+The project includes Selenium-based browser checks and manual workflow verification.
+
+The executed Selenium checks covered areas such as:
+
+- Application loading and page content.
+- Page title and body availability.
+- Login form structure and password masking.
+- Layout overflow at a tested viewport.
+- Empty-login behavior.
+- A single observed page-load duration.
+
+Ten Selenium checks were recorded as passed across two runs. The recorded page-load observation was 2.37 seconds for one load, and the tested viewport measurement was 502 pixels wide.
+
+These observations apply only to the tested conditions and should not be interpreted as comprehensive performance or compatibility results. Playwright and white-box testing were not executed as part of the recorded test runs.
+
+## Repository Structure
+
+```text
+BugSentry/
+├── src/                    # Frontend application and AI integration
+├── supabase/
+│   └── migrations/         # Database schema and policy migrations
+├── tests/                  # Browser testing files
+├── package.json            # Dependencies and scripts
+├── package-lock.json
+├── playwright.config.ts    # Playwright configuration
+└── README.md
 ```
 
-View the HTML report, if generated:
+The exact files and folders may change as the project evolves.
 
-```bash
-npx playwright show-report
-```
+## Security Notes
 
-## 🔄 Bug Resolution Workflow
+- Keep private credentials out of source control.
+- Use appropriate Supabase Row-Level Security policies.
+- Review Storage bucket visibility and access policies before deployment.
+- Restrict access to bug reports and attachments according to user roles.
+- Do not expose the local Ollama endpoint directly to untrusted networks.
 
-1. A reporter submits a bug with a description and supporting evidence.
-2. AI assistance helps analyze the defect and suggest possible causes.
-3. An administrator or workflow rule assigns the bug to a developer.
-4. The developer reproduces and investigates the issue.
-5. A proposed fix is reviewed and tested.
-6. Verification results are recorded before resolution.
-7. The reporter can confirm the fix or reopen the bug if the issue persists.
+## Project Objectives
 
-## 🎯 Project Goals
+BugSense AI aims to:
 
-- Improve visibility across the bug-resolution lifecycle.
-- Assist developers with AI-generated debugging insights.
-- Encourage structured root-cause analysis and regression testing.
-- Track incidents, responsibilities, verification, and SLA deadlines in one place.
+- Centralize bug reporting and incident tracking.
+- Improve visibility into bug status and investigation progress.
+- Support debugging with locally hosted AI assistance.
+- Organize bug-related evidence, investigation, and verification workflows.
+- Demonstrate the integration of frontend development, database services, local LLM inference, and browser testing.
 
-## 🔮 Future Enhancements
+## Authors
 
-- Automated execution of AI-generated test cases.
-- Integration with CI/CD pipelines.
-- Advanced defect classification and prioritization.
-- More comprehensive analytics for bug trends and resolution times.
+**Afshan** and **Jyoshika R**
 
-## 👩‍💻 Author
-
-**Afshan**  
-B.Tech — Computer Science Engineering (AI & ML)
-
-GitHub: [@Afshan-2007](https://github.com/Afshan-2007)
+GitHub: [Afshan-2007](https://github.com/Afshan-2007)
 
 ---
 
-*BugSense AI — Turning bug reports into a more structured, AI-assisted debugging workflow.*
+*BugSense AI is an academic software engineering project developed to explore bug lifecycle management and AI-assisted debugging.*
